@@ -1,66 +1,63 @@
 import {
   ActionRowBuilder,
-  ChannelType,
   Client,
   CommandInteraction,
   ModalBuilder,
   SlashCommandBuilder,
   TextInputBuilder,
-  MessageActionRowComponent,
-  TextInputComponent,
-  ModalActionRowComponent,
   TextInputStyle,
   ModalActionRowComponentBuilder,
   Events,
 } from "discord.js";
 import { createTimeOff } from "../firebase";
+import { validateDate } from "../utils/dateValidation";
 
 export const data = new SlashCommandBuilder()
   .setName("ooo")
   .setDescription("Adds your OOO days to schedule");
 
 export async function execute(interaction: CommandInteraction, client: Client) {
-  const modal = new ModalBuilder()
-  .setCustomId('myModal')
-  .setTitle('My Modal');
+  const modal = new ModalBuilder().setCustomId("myModal").setTitle("My Modal");
 
-  const favoriteColorInput = new TextInputBuilder()
-  .setCustomId('favoriteColorInput')
-    // The label is the prompt the user sees for this input
-  .setLabel("What's your favorite color?")
-    // Short means only a single line of text
-  .setStyle(TextInputStyle.Short);
+  const dateInput = new TextInputBuilder()
+    .setCustomId("dateInput")
+    .setLabel("What day will you be OOO (MM/DD/YYYY?")
+    .setStyle(TextInputStyle.Short);
 
-const hobbiesInput = new TextInputBuilder()
-  .setCustomId('hobbiesInput')
-  .setLabel("What's some of your favorite hobbies?")
-    // Paragraph means multiple lines of text.
-  .setStyle(TextInputStyle.Paragraph);
+  const firstActionRow =
+    new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(
+      dateInput
+    );
 
-// An action row only holds one text input,
-// so you need one action row per text input.
-const firstActionRow = new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(favoriteColorInput);
-const secondActionRow = new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(hobbiesInput);
+  modal.addComponents(firstActionRow);
 
-// Add inputs to the modal
-modal.addComponents(firstActionRow, secondActionRow);
+  await interaction.showModal(modal);
 
-// Show the modal to the user
-await interaction.showModal(modal);
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isModalSubmit()) return;
+    const { user } = interaction;
 
-client.on(Events.InteractionCreate, async interaction => {
-	if (!interaction.isModalSubmit()) return;
+    const dateValue = interaction.fields.getTextInputValue("dateInput");
+    const isValidDate = validateDate(dateValue);
 
-	// Get the data entered by the user
-	const favoriteColor = interaction.fields.getTextInputValue('favoriteColorInput');
-	const hobbies = interaction.fields.getTextInputValue('hobbiesInput');
-	console.log({ favoriteColor, hobbies });
-  if(interaction.customId === 'myModal') {
-    await interaction.reply({content:"You're good!"})
-  }
-});
+    if (!isValidDate && interaction.customId === "myModal") {
+      const currentMonth = new Date().getMonth() + 1;
+      const currentDay = new Date().getDate();
+      const currentYear = new Date().getFullYear();
 
+      const currentDate = `${currentMonth}/${currentDay}/${currentYear}`;
 
-};
+      //TODO: An unknown interaction error occurs when this command is used more than once.
+      //Most likely due to the app needing to respond to the interaction within 3 seconds, otherwise the interaction is ended by discord and error is thrown.
 
-
+      await interaction.reply({
+        content: `${dateValue} is an invalid date! Please check formatting(MM/DD/YYYY) and that the date occurs after ${currentDate}`,
+      });
+    } else {
+      await createTimeOff(user.displayName, dateValue);
+      if (interaction.customId === "myModal") {
+        await interaction.reply({ content: "You're good!" });
+      }
+    }
+  });
+}
